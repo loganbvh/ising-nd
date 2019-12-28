@@ -5,49 +5,29 @@ import matplotlib.pyplot as plt
 plt.style.use('ggplot')
 
 class Lattice(object):
-    """ Defines a square lattice of linear size L in dimension dim 
-        at temperautre T (in units of J/kB).
-        Methods:
-            - init_lattice(): populates lattice with +/- 1 at random
-            - random_site(): returns the position of a randomly-chosen
-                site on the lattice
-            - get_neighbors(pos):
-                + input: pos, a list of length dim,
-                    which defines a position on the lattice
-                + returns: a list of the positions of the 2 * dim
-                    nearest neighbors of pos
-            - get_spin(pos): returns the value (-1 or 1)
-                of the spin at position pos
-            - flip_spin(pos): flips the spin at position pos
-            - build_cluster(pos, cluster, visited):
-                + inputs:
-                    - pos, a site on the lattice
-                    - cluster, a list of lattice sites
-                        making up the current cluster
-                    - visited, a list of lattice sites
-                        that have already been visited
-                + returns: cluster, the final list of
-                    lattice sites in the cluster
-            - get_config(): returns the current
-                configuration of the lattice (array of +/-1)
-            - display(): dislays the current spin configuration
-                in image form if dim==2        
+    """Defines a square lattice of linear size L in dimension dim 
+    at temperature T (in units of J/kB).  
     """
-    def __init__(self, L, dim, T):
+    def __init__(self, L=None, dim=None, T=None):
+        assert all(arg is not None for arg in [L, dim, T])
         self.L = L
         self.dim = dim
         self.T = T
         self.init_lattice()
 
     def init_lattice(self):
-        self.config = np.random.choice(
-            [-1, 1],
-            size=tuple([self.L] * self.dim))
+        """Populate lattice with +/- 1 at random.
+        """
+        self.config = np.random.choice([-1, 1], size=tuple([self.L] * self.dim))
         
     def random_site(self):
+        """Returns the position of a randomly-chosen site on the lattice.
+        """
         return list(np.random.randint(0, self.L, size=self.dim))
         
     def get_neighbors(self, pos):
+        """Returns the nearest neighbors of lattice site `pos`.
+        """
         dim = len(pos)
         neighbors = []
         for i in range(dim):
@@ -56,12 +36,18 @@ class Lattice(object):
         return neighbors
 
     def get_spin(self, pos):
+        """Returns the value (-1 or +1) of the spin at lattice site `pos`.
+        """
         return self.config[tuple(pos)]
 
     def flip_spin(self, pos):
+        """Flips the spin at lattice site `pos`.
+        """
         self.config[tuple(pos)] = -self.config[tuple(pos)]
 
     def build_cluster(self, pos, cluster, visited):
+        """Builds a spin cluster according to the Wolff algorithm.
+        """
         spin = self.get_spin(pos)
         neighbors = self.get_neighbors(pos)
         cluster.append(pos)
@@ -74,36 +60,19 @@ class Lattice(object):
         return cluster
     
     def display(self):
+        """Plot the current spin configuration, if `self.dim == 2`.
+        """
         if self.dim == 2:
             self.image = plt.imshow(self.config)
             plt.show()
         
 class Ising(object):
-    """ Simulates the Ising model on a lattice of linear size
-        L in dimension dim at temperature T (in units of J/kB).
-        Methods:
-            - flip_cluster(cluster): flips the spin of
-                every spin in cluster
-            - run_wolff(): performs a single iteration of
-                the Wolff algorithm
-            - simulate(Neq, progbar=False): performs Neq equilibration
-                iterations of run_wolff(),
-                then Neq//2 measurement iterations. Calculates average
-                magnetization, susceptibility, and specific heat per spin
-                Displays a tqdm progress bar if progbar==True.
-            - get_mag_per_spin(config): returns the magnetization per spin
-                for single config
-            - get_specific_heat(config): returns the specific heat
-            per spin for single config
-            - get_energy_per_spin(config, rs): returns energy per spin
-                and energy**2 per spin for single config
-                (used for calculating specific heat)
-            - get_spin_spin_corr(config, rs): for a sigle config,
-                returns array containing the product of the spin at
-                the origin and the spin r lattice sites away for r=1:L-1		
+    """ Simulates the Ising model on a lattice of linear size L
+    in dimension dim at temperature T (in units of J/kB).		
     """
-    def __init__(self, L, dim, T):
-        self.lattice = Lattice(L, dim, T)
+    def __init__(self, L=None, dim=None, T=None):
+        assert all(arg is not None for arg in [L, dim, T])
+        self.lattice = Lattice(L=L, dim=dim, T=T)
         self.L = L
         self.dim = dim
         self.T = T
@@ -111,23 +80,30 @@ class Ising(object):
         self.rs = np.arange(0, self.L // 2)
 
     def flip_cluster(self, cluster):
+        """Flip all spins in the given cluster.
+        """
         for s in cluster:
             self.lattice.flip_spin(s)
     
     def run_wolff(self):
+        """Run a single time step of the Wolff algorithm. Namely, build a cluster and then flip it.
+        """
         start = self.lattice.random_site()
         cluster = self.lattice.build_cluster(start, [], [])
         self.flip_cluster(cluster)
             
-    def simulate(self, Neq, progbar=False):
-        print('Running {} eqilibration iterations.'.format(Neq))
+    def simulate(self, Neq=10**4, Nruns=None, progbar=False):
+        """Performs `Neq` equilibrium steps and then `Nruns` measurement steps
+        of the Wolff algorithm, and calculates observables.
+        """
+        print('Running {N} eqilibration iterations.'.format(N=Neq))
         for _ in tqdm(range(Neq), disable=(not progbar)):
             self.run_wolff()
-        Nruns = Neq // 2
+        Nruns = Nruns or Neq // 2
         mag_tot = 0
         mag2_tot = 0
         C_tot = 0
-        s0sr_tot = np.zeros(len(self.rs))
+        s0sr_tot = np.zeros_like(self.rs)
         print('Done with equilibration.')
         print('Running {} measurement iterations.'.format(Nruns))
         for _ in tqdm(range(Nruns), disable=(not progbar)):
@@ -148,13 +124,20 @@ class Ising(object):
         self.s0sr = s0sr_tot / Nruns
     
     def get_mag_per_spin(self, config):
+        """Returns the magnetization per spin for spin configuration `config`.
+        """
         return abs(config.mean())
     
     def get_specific_heat(self, config):
+        """Returns specific heat for spin configuration `config`.
+        """
         E, Esq = self.get_energy_per_spin(config)
         return (Esq - E**2) / self.T**2
-        
+
     def get_energy_per_spin(self, config):
+        """Returns the energy per spin and energy square per spin for
+        spin configuration `config`.
+        """
         E = 0
         Esq = 0
         for pos, _ in np.ndenumerate(config):
@@ -168,6 +151,9 @@ class Ising(object):
         return E, Esq
 
     def get_spin_spin_corr(self, config, rs):
+        """Returns an array containing the product of the spin at
+        the origin and the spin r lattice sites away for r in `rs`.
+        """
         s0sr = np.zeros(len(rs))
         pos0 = [0] * self.dim
         s0sr[0] = 1
@@ -181,27 +167,20 @@ class Ising(object):
         return s0sr
     
 class IsingTempSeries(object):
-    """ Simulates the Ising model on a square lattice of linear size
-        L in dimension dim at Nts temperatures from Tmin to Tmax
-        (in units of J/kB), using the Wolff algorithm with Neq
-        equilibration iterations and Neq//2 measurement iterations
-        for each temperature.
-        Calculates magnetization, susceptibility, specific heat,
-        and spin-spin correlation function at each temperature.
-        Methods:
-            - do_series(progbar=True, plot=True):
-                performs the temperature series.
-                Displays a tqdm progress bar if progbar==True;
-                plots magnetization, susceptibility, and specific heat
-                if plot==True.
-            - save(filename): saves IsingTempSeries object to filename
+    """Simulates the Ising model on a square lattice of linear size
+    L in dimension dim at `Nts` temperatures from `Tmin` to `Tmax`
+    (in units of J/kB), using the Wolff algorithm with `Neq`
+    equilibration iterations and `Neq//2` measurement iterations
+    for each temperature. Calculates magnetization, susceptibility, specific heat,
+    and spin-spin correlation function at each temperature.
     """
-    def __init__(self, L, dim, Tmin, Tmax, Nts, Neq=10**4):
+    def __init__(self, L=None, dim=None, Tmin=None, Tmax=None, Nts=None, Neq=10**4, Nruns=None):
+        assert(arg is not None for arg in [L, dim, Tmin, Tmax, Nts, Nruns])
         self.L = L
-        self. dim = dim
+        self.dim = dim
         self.Ts = np.linspace(Tmin, Tmax, Nts)
         self.Neq = Neq
-        self.Nruns = Neq // 2
+        self.Nruns = Nruns or Neq // 2
         self.mag = np.zeros(Nts)
         self.susc = np.zeros(Nts)
         self.C = np.zeros(Nts)
@@ -209,10 +188,14 @@ class IsingTempSeries(object):
         self.rs = np.arange(0, self.L // 2)
         self.s0sr = []
            
-    def do_series(self, progbar=True, plot=True):
+    def do_series(self, Ts=None, progbar=True, plot=True):
+        """Run the Wolff algorithm at a series of temperatures `Ts`.
+        """
+        if Ts is not None:
+            self.Ts = Ts
         for i in tqdm(range(len(self.Ts)), disable=(not progbar)):
-            ising = Ising(self.L, self.dim, self.Ts[i])
-            ising.simulate(self.Neq, progbar=False)
+            ising = Ising(L=self.L, dim=self.dim, T=self.Ts[i])
+            ising.simulate(Neq=self.Neq, Nruns=self.Nruns, progbar=False)
             self.mag[i] = ising.mag_avg
             self.susc[i] = ising.susc
             self.C[i] = ising.C
